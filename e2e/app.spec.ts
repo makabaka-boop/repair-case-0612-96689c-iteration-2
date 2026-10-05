@@ -321,4 +321,165 @@ test.describe('区间众数巡检 UI', () => {
     await expect(firstTableRow.locator('.col-second-mode')).toBeVisible();
     await expect(firstTableRow.locator('.col-second-count')).toBeVisible();
   });
+
+  test('单点更正稳健性：逐查询给出稳健结论，仅含可疑索引的区间被评估', async ({ page }) => {
+    const input = page.getByTestId('json-input');
+    // values[4] = 0 可疑。窗口 [0,4]：5×2、-5×2、0×1 → 众数 -5；
+    // 替换为 5 → 5×3 反超（-5 不是改变者，替换后众数仍是 -5）。
+    await input.click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [5, -5, 5, -5, 0],
+        queries: [
+          { left: 0, right: 4 }, // 含可疑点：不稳，最小替换值 5 → 新众数 5 频次 3
+          { left: 0, right: 3 }, // 不含可疑点：直接沿用原结果
+          { left: 4, right: 4 }, // 仅可疑点：任何不同值都改变众数
+        ],
+      }),
+    );
+    await page.getByTestId('correction-index').fill('4');
+    await page.getByTestId('correction-lo').fill('-10');
+    await page.getByTestId('correction-hi').fill('10');
+    await page.getByTestId('correction-run').click();
+
+    await expect(page.getByTestId('correction-status')).toBeVisible();
+    await expect(page.getByTestId('correction-status')).toContainText('可疑索引 4');
+    await expect(page.getByTestId('correction-status')).toContainText('[-10, 10]');
+    await expect(page.getByTestId('correction-unstable-count')).toHaveText('2');
+
+    const rows = page.locator('.correction-table tbody tr:not([aria-hidden="true"])');
+    await expect(rows).toHaveCount(3);
+    // 第 1 行：含可疑点且不稳健
+    await expect(page.getByTestId('corr-affected-0')).toHaveText('是');
+    await expect(page.getByTestId('corr-stable-0')).toHaveText('否');
+    await expect(page.getByTestId('corr-original-value-0')).toHaveText('-5');
+    await expect(page.getByTestId('corr-replacement-0')).toHaveText('5');
+    await expect(page.getByTestId('corr-new-value-0')).toHaveText('5');
+    await expect(page.getByTestId('corr-new-count-0')).toHaveText('3');
+    // 第 2 行：不含可疑点，沿用原结果
+    await expect(page.getByTestId('corr-affected-1')).toHaveText('否');
+    await expect(page.getByTestId('corr-stable-1')).toHaveText('是');
+    await expect(page.getByTestId('corr-original-value-1')).toHaveText('-5');
+    await expect(page.getByTestId('corr-replacement-1')).toHaveText('—');
+    // 第 3 行：仅可疑点本身，最小替换值 -10 成为新众数
+    await expect(page.getByTestId('corr-stable-2')).toHaveText('否');
+    await expect(page.getByTestId('corr-replacement-2')).toHaveText('-10');
+    await expect(page.getByTestId('corr-new-value-2')).toHaveText('-10');
+    await expect(page.getByTestId('corr-new-count-2')).toHaveText('1');
+  });
+
+  test('单点更正稳健性：参数校验与导出来自同一快照', async ({ page }) => {
+    const input = page.getByTestId('json-input');
+    await input.click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [1, 2, 3],
+        queries: [{ left: 0, right: 2 }],
+      }),
+    );
+    // 索引越界
+    await page.getByTestId('correction-index').fill('3');
+    await page.getByTestId('correction-lo').fill('-5');
+    await page.getByTestId('correction-hi').fill('5');
+    await page.getByTestId('correction-run').click();
+    await expect(page.getByTestId('correction-error')).toContainText('可疑索引越界');
+    // 范围倒置
+    await page.getByTestId('correction-index').fill('1');
+    await page.getByTestId('correction-lo').fill('5');
+    await page.getByTestId('correction-hi').fill('-5');
+    await page.getByTestId('correction-run').click();
+    await expect(page.getByTestId('correction-error')).toContainText('大于最大值');
+    // 修正后跑通：窗口 {1,2,3} 全互异，替换为 -5（未出现的新值）→ 众数变 -5
+    await page.getByTestId('correction-lo').fill('-5');
+    await page.getByTestId('correction-hi').fill('5');
+    await page.getByTestId('correction-run').click();
+    await expect(page.getByTestId('correction-status')).toBeVisible();
+    await expect(page.getByTestId('correction-unstable-count')).toHaveText('1');
+    await expect(page.getByTestId('corr-replacement-0')).toHaveText('-5');
+    await expect(page.getByTestId('corr-new-value-0')).toHaveText('-5');
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('correction-export').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain('correction');
+    const path = await download.path();
+    const text = path ? await readFile(path, 'utf8') : '';
+    const data = JSON.parse(text);
+    expect(data.kind).toBe('correction');
+    expect(data.index).toBe(1);
+    expect(data.lo).toBe(-5);
+    expect(data.hi).toBe(5);
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].mode).toEqual({ value: 1, count: 1 });
+    expect(data.results[0].stable).toBe(false);
+    expect(data.results[0].minReplacement).toBe(-5);
+    expect(data.results[0].changed).toEqual({ value: -5, count: 1 });
+  });
+
+  test('单点更正稳健性：重新分析时旧快照整块替换，不受旧回包影响', async ({ page }) => {
+    const input = page.getByTestId('json-input');
+    await input.click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [5, -5, 5, -5, 0],
+        queries: [{ left: 0, right: 4 }],
+      }),
+    );
+    await page.getByTestId('correction-index').fill('4');
+    await page.getByTestId('correction-lo').fill('-10');
+    await page.getByTestId('correction-hi').fill('10');
+    await page.getByTestId('correction-run').click();
+    await expect(page.getByTestId('correction-status')).toBeVisible();
+    await expect(page.getByTestId('corr-replacement-0')).toHaveText('5');
+
+    // 换一批输入重新分析：旧结果立即消失，新结果来自新快照
+    await page.getByTestId('json-input').click();
+    await page.keyboard.press('Control+A');
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [9, 9, 9],
+        queries: [{ left: 0, right: 2 }],
+      }),
+    );
+    await page.getByTestId('correction-index').fill('1');
+    await page.getByTestId('correction-lo').fill('9');
+    await page.getByTestId('correction-hi').fill('9');
+    await page.getByTestId('correction-run').click();
+    await expect(page.getByTestId('correction-status')).toBeVisible();
+    // 范围只允许原值 9：众数不可能改变
+    await expect(page.getByTestId('correction-unstable-count')).toHaveText('0');
+    await expect(page.getByTestId('corr-stable-0')).toHaveText('是');
+    await expect(page.getByTestId('corr-original-value-0')).toHaveText('9');
+    await expect(page.getByTestId('corr-replacement-0')).toHaveText('—');
+  });
+
+  test('单点更正稳健性：取消后旧 Worker 回包不会覆盖，可立即重新分析', async ({ page }) => {
+    test.setTimeout(180_000);
+    const batch = buildAdversarialBatch();
+    await page.getByTestId('json-input').click();
+    await page.keyboard.insertText(batch.json);
+    await page.getByTestId('correction-index').fill('100000');
+    await page.getByTestId('correction-lo').fill('-2147483648');
+    await page.getByTestId('correction-hi').fill('2147483647');
+    await page.getByTestId('correction-run').click();
+
+    // 分析进行中可以取消；取消后按钮消失、运行按钮恢复可用
+    await expect(page.getByTestId('correction-cancel')).toBeVisible();
+    await page.getByTestId('correction-cancel').click();
+    await expect(page.getByTestId('correction-cancel')).toHaveCount(0);
+    await expect(page.getByTestId('correction-run')).toBeEnabled();
+    // 旧 Worker 已终止：等待足够时间也不会出现迟到的结果快照
+    await page.waitForTimeout(2000);
+    await expect(page.getByTestId('correction-status')).toHaveCount(0);
+    await expect(page.getByTestId('correction-result-panel')).toHaveCount(0);
+
+    // 立即重新发起一轮（全新 Worker），结果正常出现且来自新快照
+    await page.getByTestId('correction-run').click();
+    const status = page.getByTestId('correction-status');
+    await status.waitFor({ timeout: 120_000 });
+    await expect(status).toContainText('200000 条');
+    await expect(status).toContainText('200000 个');
+    await expect(status).toContainText('可疑索引 100000');
+    await expect(page.getByTestId('correction-result-panel')).toBeVisible();
+  });
 });

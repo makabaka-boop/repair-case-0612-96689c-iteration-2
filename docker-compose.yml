@@ -1,0 +1,24 @@
+services:
+  # 一致的运行环境：构建并以静态产物提供 Web 界面。
+  # 发布到宿主机的端口可用 APP_PORT 覆盖，例如：APP_PORT=8080 docker compose up app
+  app:
+    build:
+      context: .
+      target: runtime
+      args:
+        APP_PORT: ${APP_PORT:-4173}
+    environment:
+      APP_PORT: ${APP_PORT:-4173}
+    ports:
+      - "${APP_PORT:-4173}:${APP_PORT:-4173}"
+
+  # 一次性验收服务：Vitest 单测 + TypeScript/Vite 构建 + Playwright e2e。
+  # 成功退出码为 0，随后容器结束：
+  #   docker compose up --build verify
+  verify:
+    build:
+      context: .
+      target: verify
+    environment:
+      CI: "true"
+      APP_PORT: "4173"

@@ -1,0 +1,264 @@
+:root {
+  --bg: #0f1622;
+  --panel: #182230;
+  --panel-2: #1f2b3d;
+  --text: #e6edf6;
+  --muted: #93a4bb;
+  --accent: #4f9cf9;
+  --accent-strong: #2f7de0;
+  --danger: #ff6b6b;
+  --danger-bg: #3a1d24;
+  --border: #2c3a4f;
+  --row-even: #182230;
+  --row-odd: #1b2739;
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 24px 48px;
+}
+
+.app-header h1 {
+  font-size: 22px;
+  margin: 8px 0 6px;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+code {
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent-strong);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.btn.small {
+  padding: 3px 9px;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.json-input {
+  width: 100%;
+  min-height: 180px;
+  resize: vertical;
+  background: #0c1320;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+
+.json-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.error-summary {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.error-box {
+  margin-top: 10px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.error-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.last-row {
+  color: var(--text);
+}
+
+.table-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.table-scroll {
+  height: 520px;
+  overflow: auto;
+  position: relative;
+}
+
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 13px;
+}
+
+.result-head th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  text-align: left;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+
+.result-table td {
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(44, 58, 79, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+tr.row-even {
+  background: var(--row-even);
+}
+
+tr.row-odd {
+  background: var(--row-odd);
+}
+
+.col-index {
+  width: 120px;
+  color: var(--muted);
+}
+
+.col-range {
+  width: 34%;
+}
+
+.col-mode {
+  font-variant-numeric: tabular-nums;
+}
+
+.col-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.col-second-mode {
+  font-variant-numeric: tabular-nums;
+}
+
+.col-second-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.empty-mark {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.option-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.option-toggle input {
+  cursor: pointer;
+}
+
+.snapshot-tag {
+  color: var(--accent);
+  margin-left: 6px;
+}
+
+.status-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: var(--text);
+}
+
+.status-actions .btn.small {
+  margin-left: 0;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}

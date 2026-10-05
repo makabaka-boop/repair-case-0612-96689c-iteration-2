@@ -11,7 +11,8 @@ const OVERSCAN = 12;
 /** 可滚动结果表：仅渲染可视区行，20 万行也能流畅浏览，且保持原顺序。 */
 export function VirtualTable({ snapshot }: VirtualTableProps) {
   const { answers, queries } = snapshot;
-  const bimodal = snapshot.bimodal;
+  const bimodal = snapshot.kind === 'bimodal';
+  const robust = snapshot.kind === 'robust';
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(480);
@@ -30,7 +31,7 @@ export function VirtualTable({ snapshot }: VirtualTableProps) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
     setScrollTop(0);
-    // 跟随快照：换批或切换双峰选项后重置到顶部，绝不展示上一批的残留行。
+    // 跟随快照：换批或切换分析模式后重置到顶部，绝不展示上一批的残留行。
   }, [snapshot]);
 
   const total = answers.length;
@@ -45,14 +46,65 @@ export function VirtualTable({ snapshot }: VirtualTableProps) {
   // 数十行，"滚动到末行"（scrollTop = scrollHeight）永远到不了第 20 万行。
   const topPad = startIndex * ROW_HEIGHT;
   const bottomPad = (total - endIndex) * ROW_HEIGHT;
-  const colSpan = bimodal ? 6 : 4;
+  const colSpan = bimodal ? 6 : robust ? 8 : 4;
 
   const rows: JSX.Element[] = [];
   for (let i = startIndex; i < endIndex; i++) {
     const q = queries[i];
-    // 直接判别 snapshot 联合类型：保证 first/second 来自同一项答案。
-    const first = snapshot.bimodal ? snapshot.answers[i].first : snapshot.answers[i];
-    const second = snapshot.bimodal ? snapshot.answers[i].second : null;
+    let modeValue: number;
+    let modeCount: number;
+    let cells: JSX.Element | null = null;
+    if (bimodal) {
+      const a = answers[i] as Extract<RunSnapshot, { kind: 'bimodal' }>['answers'][number];
+      modeValue = a.first.value;
+      modeCount = a.first.count;
+      cells = (
+        <>
+          <td className="col-second-mode" data-label="第二读数" data-testid={`second-value-${i}`}>
+            {a.second ? a.second.value : <span className="empty-mark">空</span>}
+          </td>
+          <td className="col-second-count" data-label="第二频次" data-testid={`second-count-${i}`}>
+            {a.second ? a.second.count : <span className="empty-mark">空</span>}
+          </td>
+        </>
+      );
+    } else if (robust) {
+      const a = answers[i] as Extract<RunSnapshot, { kind: 'robust' }>['answers'][number];
+      modeValue = a.originalMode.value;
+      modeCount = a.originalMode.count;
+      cells = (
+        <>
+          <td className="col-affected" data-label="含可疑位" data-testid={`robust-affected-${i}`}>
+            {a.affected ? '是' : <span className="empty-mark">否</span>}
+          </td>
+          <td className="col-invariant" data-label="范围稳健" data-testid={`robust-invariant-${i}`}>
+            {a.invariant ? (
+              <span className="invariant-yes">保持</span>
+            ) : (
+              <span className="invariant-no">改变</span>
+            )}
+          </td>
+          <td className="col-change-value" data-label="最小变更值" data-testid={`robust-x-${i}`}>
+            {a.firstChange ? a.firstChange.replacementValue : <span className="empty-mark">—</span>}
+          </td>
+          <td className="col-change-mode" data-label="新众数/频次" data-testid={`robust-newmode-${i}`}>
+            {a.firstChange ? (
+              <>
+                {a.firstChange.mode.value}
+                <span className="new-count"> / {a.firstChange.mode.count}</span>
+              </>
+            ) : (
+              <span className="empty-mark">—</span>
+            )}
+          </td>
+        </>
+      );
+    } else {
+      const a = answers[i] as Extract<RunSnapshot, { kind: 'normal' }>['answers'][number];
+      modeValue = a.value;
+      modeCount = a.count;
+      cells = null;
+    }
     rows.push(
       <tr
         key={i}
@@ -66,21 +118,12 @@ export function VirtualTable({ snapshot }: VirtualTableProps) {
           [{q.left}, {q.right}]
         </td>
         <td className="col-mode" data-label="众数">
-          {first.value}
+          {modeValue}
         </td>
         <td className="col-count" data-label="频次">
-          {first.count}
+          {modeCount}
         </td>
-        {bimodal && (
-          <>
-            <td className="col-second-mode" data-label="第二读数" data-testid={`second-value-${i}`}>
-              {second ? second.value : <span className="empty-mark">空</span>}
-            </td>
-            <td className="col-second-count" data-label="第二频次" data-testid={`second-count-${i}`}>
-              {second ? second.count : <span className="empty-mark">空</span>}
-            </td>
-          </>
-        )}
+        {cells}
       </tr>,
     );
   }
@@ -98,6 +141,14 @@ export function VirtualTable({ snapshot }: VirtualTableProps) {
               <>
                 <th className="col-second-mode">第二读数（双峰复核）</th>
                 <th className="col-second-count">第二频次</th>
+              </>
+            )}
+            {robust && (
+              <>
+                <th className="col-affected">含可疑下标</th>
+                <th className="col-invariant">范围内众数</th>
+                <th className="col-change-value">最小变更值</th>
+                <th className="col-change-mode">新众数 / 频次</th>
               </>
             )}
           </tr>

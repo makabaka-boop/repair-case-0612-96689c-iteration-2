@@ -10,15 +10,18 @@ interface WorkerGlobalScope {
 const ctx = globalThis as unknown as WorkerGlobalScope;
 
 ctx.onmessage = (ev) => {
-  const { values, queries, bimodal = false, runId } = ev.data;
+  const { values, queries, bimodal = false, robust = null, runId } = ev.data;
   const started =
     typeof performance !== 'undefined' ? performance.now() : Date.now();
-  // 众数与（可选的）第二名在同一次莫队移动、同一张增量频次表上产生。
-  const answers = bimodal
-    ? rangeModes(values, queries, { bimodal: true })
-    : rangeModes(values, queries);
+  // 普通众数、双峰第二名与单点更正稳健性都在同一次莫队移动、同一张增量
+  // 频次表上产生（三种模式互斥），答案与请求参数同属一个输入快照。
+  const answers = robust
+    ? rangeModes(values, queries, { robust })
+    : bimodal
+      ? rangeModes(values, queries, { bimodal: true })
+      : rangeModes(values, queries);
   const elapsedMs =
     (typeof performance !== 'undefined' ? performance.now() : Date.now()) -
     started;
-  ctx.postMessage({ runId, bimodal, answers, elapsedMs });
+  ctx.postMessage({ runId, bimodal, robust, answers, elapsedMs });
 };

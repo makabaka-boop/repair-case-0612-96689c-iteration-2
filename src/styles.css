@@ -243,6 +243,77 @@ tr.row-odd {
   margin-left: 6px;
 }
 
+.robust-tag {
+  color: #ffd479;
+}
+
+.robust-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin-bottom: 10px;
+}
+
+.robust-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.robust-input {
+  width: 150px;
+  background: #0c1320;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 13px;
+}
+
+.robust-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.robust-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.col-affected {
+  width: 90px;
+}
+
+.col-invariant {
+  width: 90px;
+}
+
+.col-change-value,
+.col-change-mode {
+  font-variant-numeric: tabular-nums;
+}
+
+.invariant-yes {
+  color: #7ee2a8;
+}
+
+.invariant-no {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.new-count {
+  color: var(--muted);
+}
+
 .status-actions {
   display: inline-flex;
   align-items: center;

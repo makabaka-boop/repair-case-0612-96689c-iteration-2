@@ -279,6 +279,153 @@ test.describe('区间众数巡检 UI', () => {
     );
   });
 
+  test('单点更正稳健性：结果表/末行/导出绑定同一快照，未含可疑位的查询沿用原众数', async ({ page }) => {
+    // 窗口 [-3,-3,2,2,5]：-3 与 2 各 2 票，众数 -3。
+    // 可疑下标 2（原值 2，与 M 同票但 o≠M）：
+    //  - 查询 [0,4] 含可疑位；范围 [-4,5] 内最小变更值由算法给出；
+    //  - 查询 [0,1] 不含可疑位 → 沿用原众数、稳健。
+    //  - 单点查询 [2,2] 含可疑位 → 替换即新众数。
+    await page.getByTestId('json-input').click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [-3, -3, 2, 2, 5],
+        queries: [
+          { left: 0, right: 4 },
+          { left: 0, right: 1 },
+          { left: 2, right: 2 },
+        ],
+      }),
+    );
+    await page.getByTestId('robust-checkbox').check();
+    await expect(page.getByTestId('robust-bar')).toBeVisible();
+    await page.getByTestId('robust-index').fill('2');
+    await page.getByTestId('robust-min').fill('-4');
+    await page.getByTestId('robust-max').fill('5');
+    await page.getByTestId('run-button').click();
+
+    await expect(page.getByTestId('status-panel')).toBeVisible();
+    await expect(page.getByTestId('robust-badge')).toBeVisible();
+    await expect(page.getByTestId('bimodal-badge')).toHaveCount(0);
+
+    const rows = page.locator('.result-table tbody tr:not([aria-hidden="true"])');
+    await expect(rows).toHaveCount(3);
+
+    // 第 1 行：含可疑位，原众数 -3/2（-3、2 各 2 票）。移除可疑的一个 2
+    // （o≠M 但与 M 同票）后 -3 以 2 票唯一居首；把该票补给 -4 会出现
+    // [-4,-3,-3,2,5]，-3 仍 2 票居首，具体最小变更值由单测预言机把关，
+    // 界面这里核对"受影响 + 原众数"两列与导出快照。
+    await expect(rows.nth(0).locator('.col-mode')).toHaveText('-3');
+    await expect(rows.nth(0).locator('.col-count')).toHaveText('2');
+    await expect(rows.nth(0).locator('.col-affected')).toHaveText('是');
+    await expect(rows.nth(0).locator('.col-invariant')).toContainText('保持');
+    await expect(rows.nth(0).locator('.col-change-value')).toContainText('—');
+
+    // 第 2 行：区间 [0,1] 不含下标 2 → 不受影响、稳健、无变更值。
+    await expect(rows.nth(1).locator('.col-mode')).toHaveText('-3');
+    await expect(rows.nth(1).locator('.col-affected')).toContainText('否');
+    await expect(rows.nth(1).locator('.col-invariant')).toContainText('保持');
+    await expect(rows.nth(1).locator('.col-change-value')).toContainText('—');
+
+    // 第 3 行：单点 [2,2] 原值 2，范围 [-4,5]；最小变更值 -4，新众数 -4/1。
+    await expect(rows.nth(2).locator('.col-affected')).toHaveText('是');
+    await expect(rows.nth(2).locator('.col-change-value')).toHaveText('-4');
+    await expect(rows.nth(2).locator('.col-change-mode')).toContainText('-4');
+    await expect(rows.nth(2).locator('.col-change-mode')).toContainText('1');
+
+    // 导出 JSON 来自同一稳健性快照
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('export-button').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain('robust');
+    const path = await download.path();
+    const text = path ? await readFile(path, 'utf8') : '';
+    const data = JSON.parse(text);
+    expect(data.kind).toBe('robust');
+    expect(data.robust).toEqual({ index: 2, minValue: -4, maxValue: 5 });
+    expect(data.results[1].affected).toBe(false);
+    expect(data.results[1].invariant).toBe(true);
+    expect(data.results[1].firstChange).toBeNull();
+    expect(data.results[2].firstChange).toEqual({
+      replacementValue: -4,
+      mode: { value: -4, count: 1 },
+    });
+    expect(data.results[2].robust).toEqual({ suspectIndex: 2, minValue: -4, maxValue: 5 });
+  });
+
+  test('稳健性参数非法：定位错误且不输出结果', async ({ page }) => {
+    await page.getByTestId('json-input').click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [1, 2, 3],
+        queries: [{ left: 0, right: 2 }],
+      }),
+    );
+    await page.getByTestId('robust-checkbox').check();
+    await page.getByTestId('robust-index').fill('9');
+    await page.getByTestId('robust-min').fill('0');
+    await page.getByTestId('robust-max').fill('1');
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('error-box')).toContainText('可疑下标越界');
+    await expect(page.getByTestId('result-panel')).toHaveCount(0);
+
+    await page.getByTestId('robust-index').fill('0');
+    await page.getByTestId('robust-min').fill('5');
+    await page.getByTestId('robust-max').fill('4');
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('error-box')).toContainText('非法更正范围');
+  });
+
+  test('稳健性与双峰互斥，关闭稳健性后普通/双峰列恢复（快照整块替换）', async ({ page }) => {
+    await page.getByTestId('json-input').click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [5, -5, 5, -5, 0],
+        queries: [{ left: 0, right: 4 }],
+      }),
+    );
+    // 开启稳健性时双峰复选框禁用，且稳健性快照不含第二读数列。
+    await page.getByTestId('robust-checkbox').check();
+    await expect(page.getByTestId('bimodal-checkbox')).toBeDisabled();
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('robust-badge')).toBeVisible();
+    await expect(page.locator('.col-second-mode')).toHaveCount(0);
+    await expect(page.locator('.col-affected')).toHaveCount(1);
+
+    // 关闭稳健性、勾选双峰重算：稳健列整块消失，第二读数列来自新快照。
+    await page.getByTestId('robust-checkbox').uncheck();
+    await page.getByTestId('bimodal-checkbox').check();
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('bimodal-badge')).toBeVisible();
+    await expect(page.getByTestId('robust-badge')).toHaveCount(0);
+    await expect(page.locator('.col-affected')).toHaveCount(0);
+    await expect(page.locator('.col-second-mode')).toHaveText('5');
+  });
+
+  test('取消旧分析发起新分析：旧 Worker 回包不覆盖新快照（runId 隔离）', async ({ page }) => {
+    // 用两个浏览器并不能直接制造 Worker 延迟；这里通过"先发稳健批次、立刻
+    // 换普通批次重算"验证最终呈现只属于后一个快照。稳健批次若迟到也不会
+    // 把稳健列覆盖回普通结果。
+    await page.getByTestId('json-input').click();
+    await page.keyboard.insertText(
+      JSON.stringify({
+        values: [1, 1, 2, 2, 1],
+        queries: [{ left: 0, right: 4 }],
+      }),
+    );
+    await page.getByTestId('robust-checkbox').check();
+    await page.getByTestId('robust-index').fill('0');
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('robust-badge')).toBeVisible();
+
+    await page.getByTestId('robust-checkbox').uncheck();
+    await page.getByTestId('run-button').click();
+    await expect(page.getByTestId('robust-badge')).toHaveCount(0);
+    await expect(page.locator('.col-affected')).toHaveCount(0);
+    const rows = page.locator('.result-table tbody tr:not([aria-hidden="true"])');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.nth(0).locator('.col-mode')).toHaveText('1');
+  });
+
   test('20 万长表双峰复核：首末行第二名可见，且不改变第一名与末行答案', async ({ page }) => {
     test.setTimeout(180_000);
     const batch = buildAdversarialBatch();
